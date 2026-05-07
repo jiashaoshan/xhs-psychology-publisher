@@ -221,23 +221,24 @@ def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
     result["steps"].append({"step": "hotspot_search", "status": "ok",
                             "people_count": len(people_data)})
 
-    # 步骤2: 生成文章
-    articles = []
-    for person in people_data:
-        logger.info(f"步骤2/3: 生成 {person['name']} 的PDP分析文章...")
-        article = generate_pdp_article(
-            person_name=person["name"],
-            person_news=person["news"],
-            pdp_url=pdp_url,
-            pdp_name=pdp_name,
-        )
-        article["person_reason"] = person.get("reason", "")
-        articles.append(article)
-        logger.info(f"  标题: {article['title']} | 正文: {article['total_chars']}字")
+    # 只取评分最高的第一个人物
+    best_person = people_data[0]
+    logger.info(f"选中人物: {best_person['name']} (评分最高)")
 
-    result["articles"] = articles
+    # 步骤2: 生成文章
+    logger.info(f"步骤2/3: 生成 {best_person['name']} 的PDP分析文章...")
+    article = generate_pdp_article(
+        person_name=best_person["name"],
+        person_news=best_person["news"],
+        pdp_url=pdp_url,
+        pdp_name=pdp_name,
+    )
+    article["person_reason"] = best_person.get("reason", "")
+    logger.info(f"  标题: {article['title']} | 正文: {article['total_chars']}字")
+
+    result["articles"] = [article]
     result["steps"].append({"step": "llm_generate", "status": "ok",
-                            "article_count": len(articles)})
+                            "article_count": 1})
 
     if dry_run:
         result["status"] = "dry_run"
