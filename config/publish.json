@@ -1,0 +1,25 @@
+{
+  "_说明": "心理产品发布配置",
+  "product": {
+    "pdp_url": "https://huixin.interwestinfo.com/custweb/home/pdpEntry/gb?td_channelid=wx",
+    "pdp_name": "PDP性格测试揭示天赋秘密",
+    "mbti_url": "",
+    "mbti_name": ""
+  },
+  "publish": {
+    "visibility": "公开可见",
+    "product_component": true,
+    "xhs_body_max_chars": 1000,
+    "editor_body_target_chars": 2000
+  },
+  "hotspot": {
+    "max_people_per_run": 3,
+    "max_news_per_person": 5,
+    "hotspot_source": "xhs"
+  },
+  "wait_seconds": {
+    "app_launch": 3,
+    "page_transition": 1.5,
+    "publish_complete": 2.5
+  }
+}
