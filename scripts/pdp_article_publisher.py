@@ -54,31 +54,56 @@ def save_published(entry: dict):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     PUBLISHED_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2))
 
-def _enforce_limits(title: str, body: str, pdp_name: str = "") -> tuple:
-    """
-    强制限制:
-    - 标题 ≤ 20字
-    - 编辑器正文: 完整正文（不含产品引导）
-    - xhs正文: 正文前段 + 产品CTA（发布确认页专用）
-    """
+def _enforce_limits(title: str) -> str:
+    """强制标题 ≤ 20字"""
     if len(title) > MAX_TITLE_LEN * 2:
         title = title[:MAX_TITLE_LEN * 2]
-    
-    editor_body = body
-    
-    # xhs正文 = 正文前段(去尾) + 产品CTA
-    body_prefix = body[:MAX_XHS_BODY].strip()
-    # 去掉末尾可能被截断的半句话
-    if len(body) > MAX_XHS_BODY:
-        last_punct = max(body_prefix.rfind("。"), body_prefix.rfind("！"), 
-                         body_prefix.rfind("？"), body_prefix.rfind("\n"))
-        if last_punct > len(body_prefix) * 0.5:
-            body_prefix = body_prefix[:last_punct + 1]
-    
-    product_cta = f"\n\n🔥【你也想解密自己的隐藏天赋？】\n想知道自己是什么性格类型？\n👉 PDP性格测试揭示天赋秘密"
-    xhs_body = body_prefix + product_cta
-    
-    return title.strip(), editor_body.strip(), xhs_body.strip()
+    return title.strip()
+
+
+def _generate_xhs_body(editor_body: str, person_name: str, pdp_name: str) -> str:
+    """
+    LLM 生成精炼的 xhs 发布确认页正文（≤1000字）
+    不是截断，而是重新组织精简版本 + 产品CTA
+    """
+    product_cta = f"\n\n🔥【你也想解密自己的隐藏天赋？】\n想知道自己是什么性格类型？\n👉 {pdp_name}"
+    cta_len = len(product_cta)
+    target_len = MAX_XHS_BODY - cta_len
+
+    prompt = f"""你是一个小红书内容精简专家。
+
+请根据以下长文，写一段精简版的小红书正文（不超过{target_len}字）。
+
+要求：
+- 保留核心观点和最具吸引力的内容
+- 语言口语化、有画面感
+- 不要出现产品推广或链接（产品信息后续会单独添加）
+- 独立成文，不要用"上文提到"或"如下"等引导语
+- 控制在{target_len}字以内
+
+原文摘要：
+分析人物：{person_name}
+{editor_body[:800]}...
+
+输出纯JSON格式：
+{{"body": "精简版正文"}}
+"""
+    try:
+        from xhs_llm import call_llm_json
+        result = call_llm_json(
+            system_prompt=f"你是一个小红书内容精简专家。输出精简正文，不超过{target_len}字。",
+            user_prompt=prompt,
+            temperature=0.4,
+            max_tokens=4000,
+        )
+        xhs_prefix = result.get("body", "").strip()
+        if len(xhs_prefix) > target_len:
+            xhs_prefix = xhs_prefix[:target_len]
+        return xhs_prefix + product_cta
+    except Exception as e:
+        logger.warning(f"xhs正文生成失败，使用编辑器正文前段: {e}")
+        body_prefix = editor_body[:MAX_XHS_BODY - 100].strip()
+        return body_prefix + product_cta
 
 def _retry_llm(prompt_template: str, person_name: str, person_news: str,
                pdp_url: str, pdp_name: str) -> dict:
@@ -142,7 +167,9 @@ def generate_pdp_article(person_name: str, person_news: str,
         raise FileNotFoundError(f"提示词模板未找到: {PDP_PROMPT}")
 
     gen = _retry_llm(prompt_template, person_name, person_news, pdp_url, pdp_name)
-    title, editor_body, xhs_body = _enforce_limits(gen["title"], gen["body"])
+    title = _enforce_limits(gen["title"])
+    editor_body = gen["body"].strip()
+    xhs_body = _generate_xhs_body(editor_body, person_name, pdp_name)
 
     return {
         "title": title,
@@ -151,7 +178,7 @@ def generate_pdp_article(person_name: str, person_news: str,
         "person_name": person_name,
         "generated_at": datetime.now().isoformat(),
         "llm_retries": gen["retries"],
-        "total_chars": len(gen["body"].strip()),
+        "total_chars": len(editor_body),
     }
 
 def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
@@ -182,7 +209,7 @@ def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
         news = search_person_news(person_name)
         people_data = [{"name": person_name, "news": news}]
     else:
-        people_data = search_hotspot_news(max_people, max_news)
+        people_data = search_hotspot_news(max_people=max_people)
 
     if not people_data:
         result["status"] = "failed"
