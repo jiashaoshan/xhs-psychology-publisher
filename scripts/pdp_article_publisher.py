@@ -231,9 +231,8 @@ def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
     # 步骤1: 获取热点人物+新闻
     logger.info("步骤1/3: 获取热点人物和新闻...")
     if person_name:
-        # 指定人物，直接搜新闻
-        news = search_person_news(person_name)
-        people_data = [{"name": person_name, "news": news}]
+        # 指定人物，没有匹配的热搜标题，用人物名作为素材
+        people_data = [{"name": person_name, "news": f"热点人物：{person_name}"}]
     else:
         people_data = search_hotspot_news(max_people=max_people)
 

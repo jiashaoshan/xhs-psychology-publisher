@@ -540,12 +540,22 @@ def run(max_people: int = 3, external_data: Optional[List[Dict]] = None) -> List
 
     people = people[:max_people]
 
-    # ---- 步骤3: 搜索人物新闻 ----
-    logger.info("📰 步骤3/3: 搜索人物新闻...")
+    # ---- 步骤3: 匹配人物到原始新闻标题 ----
+    logger.info("📰 步骤3/3: 匹配真实新闻标题...")
     results = []
     for person in people:
-        logger.info(f"  搜索: {person['name']} ({person.get('score', 0)}分)")
-        news = search_person_news(person["name"])
+        # 从热搜中找到提及该人物的真实标题
+        matched_news = []
+        for item in trending_data:
+            word = item.get("word", "")
+            if person["name"] in word:
+                platform = item.get("platform", "")
+                matched_news.append(f"[{platform}] {word}")
+        
+        # 用真实新闻标题作为素材，不要 LLM 编造
+        news_text = "\n".join(matched_news) if matched_news else f"热点人物：{person['name']}（{person.get('reason', '')}）"
+        logger.info(f"  {person['name']}: 匹配到 {len(matched_news)} 条真实新闻")
+        
         results.append({
             "name": person["name"],
             "reason": person.get("reason", ""),
@@ -554,7 +564,7 @@ def run(max_people: int = 3, external_data: Optional[List[Dict]] = None) -> List
             "hotScore": person.get("hotScore", 0),
             "freshness_tags": person.get("freshness_tags", []),
             "analyzability_tags": person.get("analyzability_tags", []),
-            "news": news,
+            "news": news_text,
         })
 
     logger.info(f"✅ 热点挖掘完成: {[r['name'] for r in results]}")
