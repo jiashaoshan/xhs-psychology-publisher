@@ -531,21 +531,51 @@ def run(max_people: int = 3, external_data: Optional[List[Dict]] = None) -> List
     logger.info("🔍 步骤2/3: 提取人物类热点并评分...")
     people = extract_people_from_trending(trending_data)
     
-    # 总是取最高分人物，不硬性过滤
-    # 如果有评分≥60的，取top N；如果没有，也取评分最高的
+    # 取评分≥60的人物
     high_score = [p for p in people if p.get("score", 0) >= 60]
+    people = (high_score or people)[:max_people]
     
-    if high_score:
-        people = high_score[:max_people]
-        logger.info(f"📊 取评分≥60的人物: {len(people)} 个")
-    else:
-        # 即使评分低也取最高分（不能空跑）
-        people = people[:1]
-        logger.warning(f"⚠️ 所有人评分<60，取最高分: {people[0]['name']}({people[0].get('score',0)}分)")
+    if not people:
+        logger.warning("⚠️ 未提取到人物，降级到百度热搜...")
+        trending_data = fetch_baidu_hotsearch(30)
+        if trending_data:
+            people = extract_people_from_trending(trending_data)
+            high_score = [p for p in people if p.get("score", 0) >= 60]
+            people = (high_score or people)[:max_people]
     
     if not people:
         logger.warning("❌ 未提取到任何人物")
         return []
+    
+    # 去重：排除今天已经发过的人物
+    try:
+        from datetime import datetime, timezone, timedelta
+        tz = timezone(timedelta(hours=8))
+        today = datetime.now(tz).strftime("%Y-%m-%d")
+        published_file = Path(__file__).parent.parent / "data" / "published-articles.json"
+        if published_file.exists():
+            published = json.loads(published_file.read_text())
+            today_names = {a["person_name"] for a in published if a.get("published_at","").startswith(today)}
+            filtered = [p for p in people if p["name"] not in today_names]
+            if filtered:
+                logger.info(f"🔁 去重: 跳过今天已发过的 {len(people)-len(filtered)} 人 ({', '.join(today_names & {p['name'] for p in people})})")
+                people = filtered
+            elif len(people) == len(filtered):
+                pass  # 没有重复
+            else:
+                # 所有候选人都发过了，降级到百度找新人
+                logger.warning(f"⚠️ 今日已发过全部候选人，降级到百度热搜找新人...")
+                trending_data = fetch_baidu_hotsearch(30)
+                if trending_data:
+                    baidu_people = extract_people_from_trending(trending_data)
+                    baidu_filtered = [p for p in baidu_people if p["name"] not in today_names]
+                    if baidu_filtered:
+                        people = baidu_filtered[:max_people]
+                        logger.info(f"  百度找到新人物: {[p['name'] for p in people]}")
+                    else:
+                        people = baidu_people[:1]  # 百度的人也都发过，取最高分
+    except Exception as e:
+        logger.warning(f"去重检查失败: {e}")
 
     # ---- 步骤3: 匹配人物到原始新闻标题 ----
     logger.info("📰 步骤3/3: 匹配真实新闻标题...")
