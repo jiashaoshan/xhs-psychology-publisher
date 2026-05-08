@@ -60,7 +60,30 @@ def call_llm_json(*args, **kwargs) -> dict:
         return json.loads(content)
     except json.JSONDecodeError:
         import re
+        # 先用正则提取 JSON
         m = re.search(r'\{.*\}', content, re.DOTALL)
         if m:
-            return json.loads(m.group())
-        raise ValueError(f"LLM 返回非 JSON: {content[:100]}")
+            raw = m.group()
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                # 尝试修复截断：如果 body 字段被截断，补全闭合
+                if '"body"' in raw and not raw.strip().endswith('}'):
+                    # 找到 body 字段的开始
+                    body_match = re.search(r'"body"\s*:\s*"([^"]*)$', raw, re.DOTALL)
+                    if body_match:
+                        # body 被截断，去掉不完整的部分
+                        fixed = raw[:raw.rfind('"body"')] + '"body": "（内容截断）"}'
+                        try:
+                            return json.loads(fixed)
+                        except:
+                            pass
+                    # 尝试直接加闭合引号和括号
+                    try:
+                        return json.loads(raw + '"}')
+                    except:
+                        try:
+                            return json.loads(raw + '"\n}')
+                        except:
+                            pass
+        raise ValueError(f"LLM 返回非 JSON: {content[:200]}")
