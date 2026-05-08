@@ -390,7 +390,12 @@ def extract_people_from_trending(trending_data: List[Dict]) -> List[Dict]:
             # 找到对应的热搜热度
             hot_score = 0
             for item in trending_data:
-                if p["name"] in item["word"] or item["word"] in p.get("reason", ""):
+                if item is None:
+                    continue
+                word = item.get("word", "")
+                if not word:
+                    continue
+                if p["name"] in word or word in p.get("reason", ""):
                     hot_score = item.get("hotScore", 0)
                     break
             
@@ -526,19 +531,21 @@ def run(max_people: int = 3, external_data: Optional[List[Dict]] = None) -> List
     logger.info("🔍 步骤2/3: 提取人物类热点并评分...")
     people = extract_people_from_trending(trending_data)
     
-    # 过滤低分人物（<60分的不值得做）
-    people = [p for p in people if p.get("score", 0) >= 60]
+    # 总是取最高分人物，不硬性过滤
+    # 如果有评分≥60的，取top N；如果没有，也取评分最高的
+    high_score = [p for p in people if p.get("score", 0) >= 60]
+    
+    if high_score:
+        people = high_score[:max_people]
+        logger.info(f"📊 取评分≥60的人物: {len(people)} 个")
+    else:
+        # 即使评分低也取最高分（不能空跑）
+        people = people[:1]
+        logger.warning(f"⚠️ 所有人评分<60，取最高分: {people[0]['name']}({people[0].get('score',0)}分)")
     
     if not people:
-        logger.warning("⚠️ 未提取到高评分人物，尝试MCP搜索...")
-        xhs_notes = fetch_xhs_personality_notes(10)
-        if xhs_notes:
-            people = extract_people_from_xhs_notes(xhs_notes)
-        if not people:
-            logger.warning("❌ 所有数据源均未提取到合适人物")
-            return []
-
-    people = people[:max_people]
+        logger.warning("❌ 未提取到任何人物")
+        return []
 
     # ---- 步骤3: 匹配人物到原始新闻标题 ----
     logger.info("📰 步骤3/3: 匹配真实新闻标题...")
