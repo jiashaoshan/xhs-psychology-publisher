@@ -2,7 +2,7 @@
 
 > 小红书心理产品运营技能 — PDP性格分析长文自动生成与发布
 
-基于 **trendradar 热点引擎 + LLM 性格分析 + ADB 手机操控** 的全自动小红书内容运营工具。
+基于 **trendradar MCP 热点引擎 + LLM 性格分析 + ADB 手机操控** 的全自动小红书内容运营工具。
 
 ---
 
@@ -10,74 +10,36 @@
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 📊 **热点挖掘** | ✅ | 自动爬取百度热搜/trendradar热点，提取人物类话题 |
-| 🧠 **PDP性格分析** | ✅ | LLM 根据人物新闻分析其 PDP 性格类型（老虎/孔雀/考拉/猫头鹰/变色龙） |
-| ✍️ **长文生成** | ✅ | 2000-2500字小红书风格性格分析长文 |
-| 📱 **ADB自动发布** | ✅ | 操控 Android 手机完成：写长文 → 一键排版 → 添加商品组件 → 公开可见 → 发布 |
+| 📊 **热点挖掘** | ✅ | MCP trendradar（微博/抖音/B站优先），降级百度热搜，排除政治人物 |
+| 🧠 **人物评分筛选** | ✅ | 4维评分模型（热度30%+受众35%+话题25%+可分析10%），过滤低分人物 |
+| ✍️ **长文生成** | ✅ | 1200-1800字，"新闻分析→产品引导"结构，标题不提PDP类型 |
+| 📱 **ADB自动发布** | ✅ | 写长文 → 一键排版 → 添加商品组件（PDP性格测试）→ 公开可见 → 发布 |
 | 🔮 **MBTI产品运营** | ⏳ 待实现 | - |
-
----
-
-## 系统架构
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    Agent 编排层                       │
-│  web_search ↓ 热搜数据 ↓ result                      │
-└─────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────────────────────────────────┐
-│               hotspot_news_search.py                  │
-│  数据源: trendradar / 百度热搜 / Agent传入             │
-│  功能: 热搜抓取 → LLM人物提取 → 新闻搜索               │
-└─────────────────────────────────────────────────────┘
-                          │ (人物名+新闻资料)
-                          ▼
-┌─────────────────────────────────────────────────────┐
-│               pdp_article_publisher.py                │
-│  功能: LLM PDP分析 → 长文生成 → 校验(含标题+字数)     │
-│  ├ editor_body: 纯PDP分析(2000-2500字, 无产品引导)     │
-│  └ xhs_body: 正文前段 + 产品CTA(≤1000字)              │
-└─────────────────────────────────────────────────────┘
-                          │ (标题+正文+xhs正文)
-                          ▼
-┌─────────────────────────────────────────────────────┐
-│                  phone_controller.py                  │
-│  功能: ADB操控Android手机发布                          │
-│  流程:                                                │
-│  1. 打开小红书 → 写文字 → 写长文                        │
-│  2. 输入标题 + 编辑器正文                               │
-│  3. 一键排版(等待24s)                                   │
-│  4. 下一步 → 处理模板选择页                              │
-│  5. 输入xhs正文(含产品CTA)                              │
-│  6. 添加组件 → 商品 → 选PDP产品                         │
-│  7. 确认 → 点屏幕中间 → 公开可见                         │
-│  8. 发布笔记                                            │
-└─────────────────────────────────────────────────────┘
-```
 
 ---
 
 ## 数据流
 
-### PDP长文发布全流程
-
 ```
 [1. 热点获取]
-  trendradar / 百度热搜 → 获取实时热搜榜单
+  trendradar MCP (Streamable HTTP) → 优先娱乐平台(微博+抖音+B站)
+  或降级 → 百度热搜
        ↓
-[2. 人物提取]
-  LLM 从热搜词条中分析提提取人物类热点
-  → 输出: {"name": "Faker李相赫", "reason": "退役从政", ...}
+[2. 人物提取 + 评分]
+  LLM 分析热搜，提取人物类热点
+  ★ 排除政治人物（普京/特朗普/魏凤和等不提取）
+  → 4维评分: 热度30% + 受众35% + 话题25% + 可分析10%
+  → 过滤 <60分的低质人物
        ↓
-[3. 新闻搜索]
-  LLM 基于训练数据 + 公开信息生生成人物新闻摘要
-  → 输出: 人物的职业背景、近期事件、性格特征
+[3. 匹配真实新闻标题]
+  ★ 直接从热搜数据中匹配该人物的原始标题（不靠LLM编造）
+  → 例如: [weibo] 孙颖莎3:2逆转金娜英（真实热搜）
        ↓
 [4. PDP分析 + 文章生成]
-  LLM 根据PDP性格模型分析人物类型
-  → editor_body(2000-2500字, 纯分析, 无产品引导)
-  → xhs_body(正文前段 + 产品CTA)
+  LLM 基于真实事件标题 + 公开知识，分析人物性格
+  → 结构: 事件拆解→性格分析→转回读者→引导测试
+  → editor_body(1200-1800字, 分析+产品钩子)
+  → xhs_body(正文前段 + 产品CTA, ≤600字)
        ↓
 [5. ADB发布]
   uiautomator2 操控手机:
@@ -89,17 +51,69 @@
   └ 发布笔记
 ```
 
-### PDP性格模型
+---
 
-PDP（Professional Dynametric Programs）将人的性格分为5种类型：
+## 人物评分模型
 
-| 类型 | 代号 | 特质 |
+### 评分维度
+
+| 维度 | 权重 | 说明 |
 |------|------|------|
-| 🦁 老虎型 | 支配型 | 权威导向，果断自信，目标感强 |
-| 🦚 孔雀型 | 表达型 | 社交达人，热情乐观，善于感染他人 |
-| 🐨 考拉型 | 耐心型 | 温和稳健，善于倾听，团队和谐 |
-| 🦉 猫头鹰型 | 精确型 | 追求完美，数据导向，条理清晰 |
-| 🦎 变色龙型 | 整合型 | 灵活变通，适应力强，善于协调 |
+| 热度分 | 30% | 基于热搜原始热度指数 |
+| 受众匹配度 | 35% | 小红书用户兴趣：明星>网红>企业家>运动员>...>政治人物(0分排除) |
+| 话题新鲜度 | 25% | 争议事件>恋情/婚变>大新闻>常规动态 |
+| PDP可分析性 | 10% | 性格鲜明>言论丰富>信息中等 |
+
+### 人物排除规则
+
+- **政治人物自动过滤**（评分=0 + LLM prompt明确排除）
+- **群体名称排除**（如"中国队"）
+- **模糊指代排除**（如"某CEO"无具体姓名）
+
+---
+
+## 文章生成策略
+
+### 标题要求
+- **≤20字**，不提PDP/性格测试/产品名
+- 围绕「人物 + 事件」制造好奇心
+- 5种标题公式：反差反转/爆料揭秘/金句暴击/情绪共鸣/结果先行
+
+### 正文结构（1200-1800字）
+
+```
+一、热点钩子（150-200字）
+   直接热点事件切入，制造悬念
+
+二、性格分析——事件深度拆解（700-1000字）
+   ★ 格式：事件1 → 性格分析 → 事件2 → 性格分析 → 事件3 → 性格分析
+   ★ 至少3个具体事件，每个逐条拆解
+   ★ "这个人做了什么 → 为什么这反映XX性格"
+
+三、转回读者 + 产品钩子（200-300字）
+   ★ "看完TA的分析，你呢？"
+   ★ "你遇到这种情况会怎么选？"
+   ★ "你知道自己是什么类型吗？"
+
+四、Hashtag（3-5个）
+```
+
+---
+
+## MCP 集成
+
+热点头数据通过 **MCP Streamable HTTP 协议** 从 trendradar-news 获取：
+
+```python
+# MCP 协议流程
+1. POST /mcp → initialize → 获取 session-id
+2. POST /mcp → notifications/initialized
+3. POST /mcp → tools/call (get_latest_news / search_news)
+
+# 代理说明
+远程服务器地址: http://100.111.235.91:3333/mcp
+需绕过本地代理（proxies={'http': None, 'https': None}）
+```
 
 ---
 
@@ -115,7 +129,6 @@ PDP（Professional Dynametric Programs）将人的性格分为5种类型：
 
 ```bash
 # ADB (Android Debug Bridge)
-# macOS 通常已自带，如没有:
 brew install android-platform-tools
 
 # Python 依赖
@@ -135,66 +148,26 @@ export ANDROID_SERIAL="FAS84PQ45T8HTOTK"  # ADB 设备串号
 export DEEPSEEK_API_KEY="sk-xxx"          # LLM API Key
 ```
 
-或配置在 `~/.openclaw/openclaw.json`：
-```json
-{
-  "env": {
-    "DEEPSEEK_API_KEY": "sk-xxx",
-    "ANDROID_SERIAL": "FAS84PQ45T8HTOTK"
-  }
-}
-```
-
 ### 外部服务
 
-| 服务 | 用途 | 获取方式 |
-|------|------|----------|
-| **DeepSeek API** | LLM 文章生成 | https://platform.deepseek.com |
-| **trendradar-news** (MCP) | 热点数据源 | 可选，不启动则降级为百度热搜爬取 |
-
----
-
-## 配置
-
-`config/publish.json`:
-
-```json
-{
-  "product": {
-    "pdp_url": "https://huixin.interwestinfo.com/custweb/home/pdpEntry/gb?td_channelid=wx",
-    "pdp_name": "PDP性格测试揭示天赋秘密",
-    "mbti_url": "",
-    "mbti_name": ""
-  },
-  "publish": {
-    "visibility": "公开可见",
-    "product_component": true,
-    "xhs_body_max_chars": 1000,
-    "editor_body_target_chars": 2500
-  },
-  "hotspot": {
-    "max_people_per_run": 3,
-    "max_news_per_person": 5
-  }
-}
-```
+| 服务 | 用途 |
+|------|------|
+| **DeepSeek API** | LLM 文章生成 |
+| **trendradar-news** (MCP) | 热点数据源，降级到百度热搜 |
 
 ---
 
 ## 快速开始
 
 ```bash
-# 1. 全自动流程（热点挖掘 → PDP分析 → ADB发布）
-python3 xhs_psychology_publisher.py --pdp --publish
+# 1. 全自动流程
+ANDROID_SERIAL=FAS84PQ45T8HTOTK python3 xhs_psychology_publisher.py --pdp --publish
 
 # 2. 指定人物手动分析
-python3 xhs_psychology_publisher.py --pdp --person "董宇辉" --publish
+ANDROID_SERIAL=FAS84PQ45T8HTOTK python3 xhs_psychology_publisher.py --pdp --person "孙颖莎" --publish
 
 # 3. 仅生成不发布（测试用）
 python3 xhs_psychology_publisher.py --pdp --dry-run
-
-# 4. MBTI模块（待实现）
-python3 xhs_psychology_publisher.py --mbti --publish
 ```
 
 ---
@@ -203,37 +176,22 @@ python3 xhs_psychology_publisher.py --mbti --publish
 
 ```
 xhs-psychology-publisher/
-├── SKILL.md                           ← OpenClaw 技能元描述
+├── SKILL.md
 ├── xhs_psychology_publisher.py        ← CLI 入口
-├── requirements.txt                   ← Python 依赖
+├── requirements.txt
 ├── scripts/
-│   ├── phone_controller.py            ← ADB 手机操控核心（商品组件+公开可见）
-│   ├── pdp_article_publisher.py       ← PDP文章生成与发布（校验+重试）
-│   ├── hotspot_news_search.py         ← 热点挖掘（trendradar/百度热搜）
+│   ├── phone_controller.py            ← ADB 手机操控
+│   ├── pdp_article_publisher.py       ← PDP文章生成（评分排序+标题校验+字数控制）
+│   ├── hotspot_news_search.py         ← 热点挖掘（MCP/百度热搜+评分+匹配真实标题）
 │   └── xhs_llm.py                     ← LLM API 封装（DeepSeek）
 ├── templates/
-│   └── pdp-article-prompt.md          ← PDP分析文章提示词模板
+│   └── pdp-article-prompt.md          ← 文章提示词（新闻分析→产品引导结构）
 ├── config/
-│   └── publish.json                   ← 发布配置
+│   └── publish.json
 ├── data/
-│   └── published-articles.json        ← 发布历史记录
+│   └── published-articles.json
 └── .gitignore
 ```
-
----
-
-## 验收标准（QA Checklist）
-
-- [x] trendradar/百度热搜能正确获取实时热点
-- [x] LLM 能从热搜中提取人物类关键词
-- [x] 文章标题不超过20字，含人物全名
-- [x] 编辑器正文在2000-2500字范围内
-- [x] 编辑器正文不出现产品引导链接
-- [x] xhs正文含产品CTA（PDP性格测试链接）
-- [x] ADB 能正确完成写长文→一键排版→下一步
-- [x] 预览页能添加"商品"组件并选择指定产品
-- [x] 可见范围设置为"公开可见"
-- [x] 发布成功并记录到 published-articles.json
 
 ---
 
