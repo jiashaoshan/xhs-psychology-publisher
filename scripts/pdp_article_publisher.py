@@ -29,8 +29,8 @@ CONFIG_DIR = SKILL_DIR / "config"
 PUBLISHED_FILE = DATA_DIR / "published-articles.json"
 PDP_PROMPT = TEMPLATES_DIR / "pdp-article-prompt.md"
 
-MIN_BODY_LEN = 1000
-MAX_BODY_LEN = 1500
+MIN_BODY_LEN = 1200
+MAX_BODY_LEN = 1800
 MAX_TITLE_LEN = 20
 MAX_XHS_BODY = 600
 MAX_RETRIES = 3
@@ -135,9 +135,9 @@ def _retry_llm(prompt_template: str, person_name: str, person_news: str,
 
         length_hint = ""
         if attempt == 2:
-            length_hint = "\n⚠️ 正文必须在1000-1500字！精简！且标题必须包含人物全名！上次超长了或格式不对，请修正！"
+            length_hint = "\n⚠️ 正文必须在1200-1800字！分析要深入结合具体事件！且标题必须包含人物全名！上次超长了或格式不对，请修正！"
         elif attempt == 3:
-            length_hint = "\n⚠️ 标题必须含人物全名！正文必须在1000-1500字！精简！舍弃多余分析！严格JSON格式！"
+            length_hint = "\n⚠️ 标题必须含人物全名！正文必须在1200-1800字！事件分析要详细！严格JSON格式！"
 
         try:
             result = call_llm_json(
