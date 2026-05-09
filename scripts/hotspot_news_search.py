@@ -514,11 +514,13 @@ def run(max_people: int = 3, external_data: Optional[List[Dict]] = None) -> List
     """
     # ---- 步骤1: 获取热搜数据 ----
     trending_data = external_data
+    original_trending = trending_data  # 保存原始数据，用于最终兜底
     
     if not trending_data:
         # 优先使用 trendradar
         logger.info("📡 步骤1/3: 从 trendradar 获取热点...")
         trending_data = fetch_trendradar_news(30)
+        original_trending = trending_data or original_trending
         
         # trendradar 失败则降级到百度
         if not trending_data:
@@ -544,7 +546,79 @@ def run(max_people: int = 3, external_data: Optional[List[Dict]] = None) -> List
             people = (high_score or people)[:max_people]
     
     if not people:
-        logger.warning("❌ 未提取到任何人物")
+        logger.warning("❌ 未提取到任何人物，执行最终兜底方案...")
+        
+        # === 最终兜底：从热搜标题中直接提取人名，搜索真实新闻 ===
+        fallback_data = original_trending or trending_data
+        if fallback_data:
+            titles_text = "\n".join([f"{i+1}. {item.get('word', '')}" for i, item in enumerate(fallback_data)])
+            extract_prompt = f"""分析以下热搜标题，提取**所有提到的具体人物名字**。
+
+标题列表：
+{titles_text}
+
+要求：
+- 只提取明确出现的人名（真实人物，不是虚构角色）
+- 排除群体名称（如"国乒男团"、"中国乘客"）
+- 排除匿名指代（如"患病老板"、"买家"）
+- **排除政治人物**（不提取任何国家元首、政府官员、政治领袖）
+
+返回JSON：
+{{"names": ["赵心童", "特朗普", "达利欧"]}}"""
+            try:
+                name_result = call_llm_json(
+                    system_prompt="你是一个人名提取器，从热搜标题中提取具体出现的人物名字。",
+                    user_prompt=extract_prompt,
+                    temperature=0.1,
+                )
+                all_names = name_result.get("names", [])
+                logger.info(f"  热搜标题中提取到人物名: {all_names}")
+                
+                if all_names:
+                    # 取第一个名字（如果今天发过则取下一个）
+                    selected_name = all_names[0]
+                    try:
+                        from datetime import datetime, timezone, timedelta
+                        tz = timezone(timedelta(hours=8))
+                        today = datetime.now(tz).strftime("%Y-%m-%d")
+                        published_file = Path(__file__).parent.parent / "data" / "published-articles.json"
+                        if published_file.exists():
+                            published = json.loads(published_file.read_text())
+                            today_names = {a["person_name"] for a in published if a.get("published_at","").startswith(today)}
+                            for n in all_names:
+                                if n not in today_names:
+                                    selected_name = n
+                                    break
+                    except Exception:
+                        pass
+                    
+                    logger.info(f"  🎯 最终兜底选中人物: {selected_name}")
+                    news_text = search_person_news(selected_name)
+                    
+                    # 找到对应的热搜标题
+                    matched_titles = []
+                    for item in fallback_data:
+                        word = item.get("word", "")
+                        if selected_name in word:
+                            platform = item.get("platform", "")
+                            matched_titles.append(f"[{platform}] {word}")
+                    
+                    results = [{
+                        "name": selected_name,
+                        "reason": f"今日热搜人物：{selected_name}",
+                        "category": "其他",
+                        "score": 60,
+                        "hotScore": 0,
+                        "freshness_tags": ["近期大新闻"],
+                        "analyzability_tags": ["信息中等"],
+                        "news": news_text,
+                    }]
+                    logger.info(f"✅ 兜底方案成功: {selected_name}")
+                    return results
+            except Exception as e:
+                logger.warning(f"最终兜底提取失败: {e}")
+        
+        logger.warning("❌ 所有方案均未找到人物")
         return []
     
     # 去重：排除今天已经发过的人物
