@@ -10,7 +10,8 @@
     "visibility": "公开可见",
     "product_component": true,
     "xhs_body_max_chars": 1000,
-    "editor_body_target_chars": 2000
+    "editor_body_target_chars": 2000,
+    "hashtags": ["性格分析", "PDP性格测试", "热点人物", "识人术", "心理学"]
   },
   "hotspot": {
     "max_people_per_run": 3,

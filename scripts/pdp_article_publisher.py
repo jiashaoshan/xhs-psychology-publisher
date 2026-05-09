@@ -32,7 +32,7 @@ PDP_PROMPT = TEMPLATES_DIR / "pdp-article-prompt.md"
 MIN_BODY_LEN = 1200
 MAX_BODY_LEN = 1800
 MAX_TITLE_LEN = 20
-MAX_XHS_BODY = 600
+MAX_XHS_BODY = 1000  # xhs正文上限（含CTA和标签）
 MAX_RETRIES = 3
 
 def load_prompt() -> str:
@@ -72,13 +72,22 @@ def _enforce_limits(title: str) -> str:
     return title.strip()
 
 
-def _generate_xhs_body(editor_body: str, person_name: str, pdp_name: str) -> str:
+def _generate_xhs_body(editor_body: str, person_name: str, pdp_name: str, config: dict = None) -> str:
     """
     LLM 生成精炼的 xhs 发布确认页正文（≤1000字）
-    不是截断，而是重新组织精简版本 + 产品CTA
+    不是截断，而是重新组织精简版本 + 产品CTA + 话题标签
     """
-    product_cta = f"\n\n🔥【你也想解密自己的隐藏天赋？】\n想知道自己是什么性格类型？\n👉 {pdp_name}"
+    # 话题标签（从配置读取或使用默认）
+    hashtags = []
+    if config:
+        hashtags = config.get("hashtags", [])
+    if not hashtags:
+        hashtags = ["性格分析", "PDP性格测试", "热点人物", "识人术", "心理学"]
+    hashtag_line = "\n" + " ".join([f"#{t}" for t in hashtags])
+    
+    product_cta = f"\n\n🔥【你也想解密自己的隐藏天赋？】\n想知道自己是什么性格类型？\n👉 {pdp_name}" + hashtag_line
     cta_len = len(product_cta)
+    target_len = MAX_XHS_BODY - cta_len
     target_len = MAX_XHS_BODY - cta_len
 
     prompt = f"""你是一个小红书内容精简专家。
@@ -186,7 +195,7 @@ def _retry_llm(prompt_template: str, person_name: str, person_news: str,
     return {"title": title, "body": body, "retries": MAX_RETRIES}
 
 def generate_pdp_article(person_name: str, person_news: str,
-                         pdp_url: str, pdp_name: str) -> dict:
+                         pdp_url: str, pdp_name: str, config: dict = None) -> dict:
     """LLM 生成PDP性格分析长文"""
     prompt_template = load_prompt()
     if not prompt_template:
@@ -195,7 +204,7 @@ def generate_pdp_article(person_name: str, person_news: str,
     gen = _retry_llm(prompt_template, person_name, person_news, pdp_url, pdp_name)
     title = _enforce_limits(gen["title"])
     editor_body = gen["body"].strip()
-    xhs_body = _generate_xhs_body(editor_body, person_name, pdp_name)
+    xhs_body = _generate_xhs_body(editor_body, person_name, pdp_name, config)
 
     return {
         "title": title,
@@ -261,6 +270,7 @@ def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
         person_news=best_person["news"],
         pdp_url=pdp_url,
         pdp_name=pdp_name,
+        config=config,
     )
     article["person_reason"] = best_person.get("reason", "")
     logger.info(f"  标题: {article['title']} | 正文: {article['total_chars']}字")
