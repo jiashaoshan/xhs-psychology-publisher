@@ -22,7 +22,49 @@ metadata:
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | 🧠 PDP产品长文 | ✅ 可用 | 热点人物 → 新闻 → PDP性格分析 → 长文发布（含商品组件+公开可见）|
+| 🎯 自测类文章（新） | ✅ 可用 | 5种内容类型轮换 → LLM生成 → ADB发布，隔天与PDP交替运行 |
 | 🔮 MBTI产品长文 | ⏳ 待实现 | - |
+
+## 自测类文章（Strategy A）
+
+### 5种内容类型轮换
+
+| 类型 | 说明 | 标题示例 |
+|------|------|----------|
+| ① 职场性格对比 | 对比两种PDP性格的职场表现 | "老虎型 vs 孔雀型，职场谁更吃得开？" |
+| ② 互动测试帖 | 3-5个问题测性格 | "3个问题测出你的隐藏性格" |
+| ③ 情侣/关系帖 | 不同性格在关系中的表现 | "老虎型女友 vs 考拉型男友" |
+| ④ 故事型 | 第一人称发现自我的故事 | "面试官一眼看出我是孔雀型" |
+| ⑤ 评论区引流帖 | 评论区互动引导 | "评论区留下答案帮你分析" |
+
+### 核心逻辑
+- 不分析名人 → 让读者代入自己
+- 不干讲理论 → 用场景/故事/互动制造共鸣
+- 转化路径：文章 → 评论区互动/私信 → PDP测试
+
+### 发布区别
+| 维度 | PDP名人分析 | 自测类文章 |
+|------|------------|-----------|
+| 内容焦点 | 热点人物 | 读者本人 |
+| 标题关键词 | 人物名+事件 | 性格类型+场景 |
+| 用户动机 | 吃瓜/好奇心 | 自我认知 |
+| 转化路径 | 产品组件 | 评论区→私信→测试 |
+| 商品组件 | ✅ 添加 | ✅ 添加（⑤类型不加） |
+
+### 交替运行策略
+
+```bash
+# 奇数日 → PDP名人分析
+# 偶数日 → 自测类文章
+# 自动模式
+python3 xhs_psychology_publisher.py --auto --publish
+
+# 手动指定自测模式
+python3 xhs_psychology_publisher.py --self-test --publish
+
+# 手动指定自测模式（仅生成不发布）
+python3 xhs_psychology_publisher.py --self-test --dry-run
+```
 
 ## PDP产品长文发布流程
 
@@ -50,17 +92,21 @@ metadata:
 ## 快速使用
 
 ```bash
-# 完整流程：自动爬百度热搜 → 提取人物 → PDP分析 → 发布
+# PDP完整流程
 python3 xhs_psychology_publisher.py --pdp --publish
 
-# 仅生成文章不发布（测试用）
+# 自测类文章
+python3 xhs_psychology_publisher.py --self-test --publish
+
+# 自动交替（推荐定时任务用这个）
+python3 xhs_psychology_publisher.py --auto --publish
+
+# 仅生成不发布
 python3 xhs_psychology_publisher.py --pdp --dry-run
+python3 xhs_psychology_publisher.py --self-test --dry-run
 
-# 指定人物手动分析（跳过热搜搜索）
+# 指定人物
 python3 xhs_psychology_publisher.py --pdp --person "董宇辉"
-
-# 发MBTI长文（待实现）
-python3 xhs_psychology_publisher.py --mbti --publish
 ```
 
 ### Agent 编排模式（推荐）

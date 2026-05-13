@@ -34,6 +34,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(), logging.FileHandler(str(log_file), encoding="utf-8")],
 )
 
+logger = logging.getLogger("xhs-psychology-publisher")
 sys.path.insert(0, str(SCRIPT_DIR / "scripts"))
 
 
@@ -57,6 +58,29 @@ def cmd_pdp(args):
     return result
 
 
+def cmd_self_test(args):
+    """自测类文章: 5种内容类型轮换 → LLM生成 → ADB发布"""
+    from self_test_publisher import run_self_test
+    result = run_self_test(dry_run=args.dry_run)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def cmd_auto(args):
+    """自动交替模式: 奇数日 → PDP名人分析, 偶数日 → 自测类"""
+    today = datetime.now().day
+    is_even = today % 2 == 0
+    mode = "self-test" if is_even else "pdp"
+    mode_name = {"pdp": "PDP名人分析", "self-test": "自测类文章"}
+    logger.info(f"自动模式: 第{today}日 → {mode_name[mode]}")
+    print(f"\n  📅 今日模式: {mode_name[mode]}（日{today}）\n")
+
+    if mode == "pdp":
+        return cmd_pdp(args)
+    else:
+        return cmd_self_test(args)
+
+
 def cmd_mbti(args):
     """MBTI产品长文（待实现）"""
     print("⏳ MBTI产品长文模块待实现")
@@ -68,8 +92,14 @@ def main():
     parser = argparse.ArgumentParser(description="小红书心理产品运营技能")
 
     # PDP 模式
-    parser.add_argument("--pdp", action="store_true", help="PDP产品长文发布")
+    parser.add_argument("--pdp", action="store_true", help="PDP产品长文发布（名人分析）")
     parser.add_argument("--person", "-p", help="指定分析人物（可选，不指定则自动搜索热点）")
+
+    # 自测模式
+    parser.add_argument("--self-test", action="store_true", help="自测类文章发布（5种类型轮换）")
+
+    # 自动交替模式
+    parser.add_argument("--auto", action="store_true", help="自动交替：奇数日PDP，偶数日自测")
 
     # MBTI 模式
     parser.add_argument("--mbti", action="store_true", help="MBTI产品长文（待实现）")
@@ -80,8 +110,12 @@ def main():
 
     args = parser.parse_args()
 
-    if args.pdp:
+    if args.auto:
+        result = cmd_auto(args)
+    elif args.pdp:
         result = cmd_pdp(args)
+    elif args.self_test:
+        result = cmd_self_test(args)
     elif args.mbti:
         result = cmd_mbti(args)
     else:
@@ -93,10 +127,15 @@ def main():
         status = result.get("status", "unknown")
         articles = result.get("articles", [])
         published = result.get("published", [])
+        art_type = result.get("article_type", 0)
+        type_names = {1: "职场性格对比", 2: "互动测试帖", 3: "情侣/关系帖", 4: "故事型", 5: "评论区引流帖"}
+        type_tag = f" [{type_names.get(art_type, '')}]" if art_type else ""
+
         if status == "dry_run":
-            print(f"\n📋 干运行完成，生成了 {len(articles)} 篇文章（未发布）")
+            print(f"\n📋 干运行完成，生成了 {len(articles)} 篇{type_tag}文章（未发布）")
         elif status == "published":
-            print(f"\n✅ 成功发布 {len(published)} 篇PDP长文")
+            mode = "PDP名人分析" if "pdp" in str(published) else "自测类"
+            print(f"\n✅ 成功发布 {len(published)} 篇{type_tag}文章")
         elif status == "failed":
             print(f"\n❌ 发布失败: {result.get('error', '未知错误')}")
         elif status == "not_implemented":
