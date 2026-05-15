@@ -31,12 +31,40 @@ def _scale(d: u2.Device, x: int, y: int) -> tuple:
 def get_device(serial: str = None) -> u2.Device:
     global _device_pool, _device_pool_lock
     serial = serial or os.environ.get("ANDROID_SERIAL")
+    
+    # 自动发现：有多台设备时，自动选1080x2400的（OnePlus）
+    if not serial:
+        try:
+            from adbutils import adb as adb_lib
+            devices = adb_lib.device_list()
+            if len(devices) > 1:
+                for dev in devices:
+                    try:
+                        w = dev.shell('wm size').strip()
+                        if '1080x2400' in w:
+                            serial = dev.serial
+                            logger.info(f"多设备自动选择: {serial} (1080x2400)")
+                            break
+                    except:
+                        pass
+                if not serial:
+                    serial = devices[0].serial
+                    logger.info(f"多设备自动选择第一台: {serial}")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"设备自动发现失败: {e}")
+        
     key = serial or "__default__"
     with _device_pool_lock:
         if key not in _device_pool:
-            d = u2.connect(serial) if serial else u2.connect()
-            _device_pool[key] = d
-            logger.info(f"连接设备 {key} | 分辨率 {d.info.get('displayWidth')}x{d.info.get('displayHeight')}")
+            try:
+                d = u2.connect(serial) if serial else u2.connect()
+                _device_pool[key] = d
+                logger.info(f"连接设备 {key} | 分辨率 {d.info.get('displayWidth')}x{d.info.get('displayHeight')}")
+            except Exception as e:
+                logger.error(f"设备连接失败: {e}")
+                raise
         return _device_pool[key]
 
 def home(device: u2.Device = None):

@@ -12,6 +12,7 @@ PDP产品长文发布模块
 import json, logging, os, sys
 from datetime import datetime
 from pathlib import Path
+import traceback
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 SKILL_DIR = SCRIPT_DIR.parent
@@ -285,6 +286,21 @@ def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
 
     # 步骤3: ADB发布
     logger.info("步骤3/3: ADB发布到小红书...")
+    
+    # 先保存已生成的文章（断点保护），防止步骤3中断丢失稿子
+    draft_record = {
+        "title": article["title"],
+        "person_name": article["person_name"],
+        "product_name": pdp_name,
+        "generated_at": datetime.now().isoformat(),
+        "type": "PDP长文",
+        "total_chars": article["total_chars"],
+        "editor_body": article["editor_body"][:200],  # 存前200字识别
+        "status": "draft",
+    }
+    save_published(draft_record)
+    logger.info(f"📝 已保存草稿: {article['title']}")
+    
     published = []
     for article in result["articles"]:
         try:
@@ -302,12 +318,14 @@ def run_publish(person_name: str = None, dry_run: bool = False) -> dict:
                 "published_at": datetime.now().isoformat(),
                 "type": "PDP长文",
                 "total_chars": article["total_chars"],
+                "success": True,
             }
             save_published(record)
             published.append(record)
             logger.info(f"✅ 发布成功: {article['title']}")
         except Exception as e:
             logger.error(f"❌ 发布失败: {article['title']} - {e}")
+            logger.error(traceback.format_exc())
             result["steps"].append({
                 "step": f"publish_{article['person_name']}",
                 "status": "failed",
