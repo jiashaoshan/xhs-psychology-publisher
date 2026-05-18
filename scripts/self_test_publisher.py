@@ -86,8 +86,30 @@ def _enforce_title(title: str) -> str:
     return title.strip()
 
 
+def _select_weighted_type(last_type: int) -> int:
+    """
+    加权随机选择文章类型
+    权重：类型⑤（评论区引流帖）2x，其余 1x
+    如果选到和上次相同，重新选（最多3次）
+    """
+    weights = {1: 1, 2: 1, 3: 1, 4: 1, 5: 4}  # 类型⑤ 4x权重，约占50%
+    available = [t for t in range(1, 6) if t != last_type or last_type == 0]
+    if not available:
+        available = list(range(1, 6))
+
+    # 加权随机选3次机会
+    for _ in range(3):
+        pool = [t for t in available for _ in range(weights[t])]
+        chosen = random.choice(pool)
+        if chosen != last_type or last_type == 0:
+            return chosen
+    # 最终兜底：忽略撞型
+    pool = [t for t in available for _ in range(weights[t])]
+    return random.choice(pool)
+
+
 def _generate_article(config: dict) -> dict:
-    """LLM 生成自测类文章，5种类型轮换，避免连续重复"""
+    """LLM 生成自测类文章，5种类型加权轮换（类型⑤权重2x），避免连续重复"""
     prompt_template = load_prompt()
     if not prompt_template:
         raise FileNotFoundError(f"提示词模板未找到: {PROMPT_FILE}")
@@ -97,12 +119,12 @@ def _generate_article(config: dict) -> dict:
     for attempt in range(1, MAX_RETRIES + 1):
         logger.info(f"LLM 生成第 {attempt}/{MAX_RETRIES} 次...")
 
-        # 如果连续重试而且上次类型和跳过类型相同，强制要求 non-json
-        force_type = None
-        if attempt >= 2 and last_type > 0:
-            # 强制选一个不同的类型
+        # 预选类型（加权），通知 LLM 使用指定类型
+        force_type = _select_weighted_type(last_type)
+        if attempt >= 2 and last_type > 0 and force_type == last_type:
             available = [t for t in range(1, 6) if t != last_type]
-            force_type = random.choice(available)
+            if available:
+                force_type = random.choice(available)
 
         length_hint = ""
         if attempt == 2:
@@ -110,9 +132,7 @@ def _generate_article(config: dict) -> dict:
         elif attempt == 3:
             length_hint = "\n⚠️ 严格遵循JSON格式输出！不要markdown包围！"
 
-        force_hint = ""
-        if force_type:
-            force_hint = f"\n⚠️ 本次必须使用文章类型{force_type}（{TYPE_NAMES[force_type]}），不能选择其他类型！"
+        force_hint = f"\n⚠️ 本次必须使用文章类型{force_type}（{TYPE_NAMES[force_type]}），不能选择其他类型！"
 
         prompt_text = prompt_template + length_hint + force_hint
 
@@ -141,7 +161,7 @@ def _generate_article(config: dict) -> dict:
             issues.append(f"文章类型无效: {article_type}")
 
         # 强制类型不匹配
-        if force_type and article_type != force_type:
+        if article_type != force_type:
             issues.append(f"类型应为{force_type}，实际为{article_type}")
 
         if issues:
@@ -181,7 +201,7 @@ def _generate_xhs_body(editor_body: str, article_type: int, config: dict) -> str
         2: "\n\n💡 说说你的答案，或者私信我做完整版测试👇",
         3: "\n\n💡 你和你对象是什么搭配？评论区聊聊～",
         4: "\n\n💡 看完我的故事，想知道自己是什么类型？私信我～",
-        5: "\n\n💡 评论区留下你的答案，帮你分析～想测完整版私信我",
+        5: "\n\n💡 评论区留下你的答案，帮你分析～我测过这个，挺准的👇",
     }
     cta = ctas.get(article_type, "\n\n💡 想知道自己是什么性格类型？评论区或私信我～")
 
@@ -232,8 +252,7 @@ def run_self_test(dry_run: bool = False) -> dict:
     published = []
     try:
         logger.info(f"发布笔记: {article['title']}")
-        # 类型⑤（评论区引流帖）不加商品组件，用私信引流
-        use_product = pdp_name if article["article_type"] != 5 else ""
+        use_product = pdp_name  # 所有类型均加商品组件
         xie_chang_wen(
             editor_body=article["body"],
             publish_body=article["xhs_body"],
