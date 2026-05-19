@@ -145,9 +145,9 @@ def _retry_llm(prompt_template: str, person_name: str, person_news: str,
 
         length_hint = ""
         if attempt == 2:
-            length_hint = "\n⚠️ 正文必须在1200-1800字！分析要深入结合具体事件！且标题必须包含人物全名！上次超长了或格式不对，请修正！"
+            length_hint = "\n⚠️ 正文必须在1200-1800字！分析要深入结合具体事件！且标题必须包含人物全名且不超过16字符（含Emoji）！上次超长了或格式不对，请修正！"
         elif attempt == 3:
-            length_hint = "\n⚠️ 标题必须含人物全名！正文必须在1200-1800字！事件分析要详细！严格JSON格式！"
+            length_hint = "\n⚠️ 标题必须含人物全名且不超过16字符（含Emoji）！正文必须在1200-1800字！事件分析要详细！严格JSON格式！"
 
         try:
             result = call_llm_json(
